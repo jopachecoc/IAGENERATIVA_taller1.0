@@ -321,6 +321,146 @@ La implementación de IA puede generar resistencia entre los empleados debido a 
 Esto genera mayor satisfacción de los usuarios y brinda seguridad y continuidad laboral a los colaboradores.
 
 
+---
+
+## Fase 3: Aplicación de la Ingeniería de Prompts (ejecución en Google Colab)
+
+Objetivo: diseñar y probar prompts que permitan obtener respuestas útiles del modelo. Se recomienda usar un modelo open‑source para evidenciar el impacto de los prompts, aunque se incluye una alternativa con API remota.
+
+Estructura mínima requerida para esta fase:
+- data/pedidos.csv (o pedidos.xlsx) — contiene al menos 10 registros de prueba (número de tracking, estado, fecha estimada, link_rastreo, comentario).
+- notebooks/Taller1_Fase3_EcoMarket.ipynb — notebook con código para ejecutar los prompts en Colab.
+- README (esta sección) con instrucciones paso a paso.
+
+### Implementacion de prompts
+1. Prompt de Solicitud de Pedido
+   - Crear un prompt que solicite el estado de un pedido dado su número de seguimiento.
+   - Incluir en el prompt información de la "base de datos" (al menos 10 pedidos) para que el modelo consulte.
+   - Ejemplo básico: `Dame el estado del pedido 12345.`
+   - Ejemplo mejorado (recomendado):
+     > Actúa como un agente de servicio al cliente amable. Proporciona el estado actual del pedido con el número de seguimiento '{{tracking_number}}'. Incluye una estimación de la fecha de entrega y un enlace para rastrear el paquete en tiempo real. Si el pedido está retrasado, ofrece una disculpa y una breve explicación.
+
+2. Prompt de Devolución de Producto
+   - Crear un prompt que guíe al cliente en el proceso de devolución, distinguiendo productos elegibles y no elegibles (ej.: perecederos).
+   - Debe retornar pasos claros, plazos y condiciones, y alternativas cuando no sea elegible.
+
+---
+
+### Instrucciones rápidas para Google Colab (ejemplo con modelo open-source Flan-T5 pequeño)
+
+1) Abrir Colab y ejecutar las celdas:
+
+```python
+# Colab cell 1: instalar dependencias
+!pip install -q transformers[sentencepiece] pandas
+```
+
+2) Subir dataset (data/pedidos.csv) a Colab o generar uno de ejemplo:
+
+```python
+# Colab cell 2: crear dataset de ejemplo (si no quieres subir archivo)
+import pandas as pd
+
+data = [
+    {"tracking_number": "10001","estado":"En tránsito","fecha_entrega_estimada":"2025-10-01","link_rastreo":"https://track.example/10001","comentario":"Salida del centro"},
+    {"tracking_number": "10002","estado":"Entregado","fecha_entrega_estimada":"2025-09-20","link_rastreo":"https://track.example/10002","comentario":"Entregado a recepción"},
+    {"tracking_number": "10003","estado":"Retrasado","fecha_entrega_estimada":"2025-09-28","link_rastreo":"https://track.example/10003","comentario":"Demoras por clima"},
+    {"tracking_number": "10004","estado":"En preparación","fecha_entrega_estimada":"2025-10-05","link_rastreo":"https://track.example/10004","comentario":"Empaque"},
+    {"tracking_number": "10005","estado":"En tránsito","fecha_entrega_estimada":"2025-10-02","link_rastreo":"https://track.example/10005","comentario":"En camino"},
+    {"tracking_number": "10006","estado":"Entregado","fecha_entrega_estimada":"2025-09-18","link_rastreo":"https://track.example/10006","comentario":"Firmado por cliente"},
+    {"tracking_number": "10007","estado":"En tránsito","fecha_entrega_estimada":"2025-10-03","link_rastreo":"https://track.example/10007","comentario":"Ruta programada"},
+    {"tracking_number": "10008","estado":"Retrasado","fecha_entrega_estimada":"2025-10-07","link_rastreo":"https://track.example/10008","comentario":"Problema aduanero"},
+    {"tracking_number": "10009","estado":"En preparación","fecha_entrega_estimada":"2025-10-06","link_rastreo":"https://track.example/10009","comentario":"En bodega"},
+    {"tracking_number": "10010","estado":"En tránsito","fecha_entrega_estimada":"2025-10-04","link_rastreo":"https://track.example/10010","comentario":"Salida nocturna"}
+]
+df = pd.DataFrame(data)
+df.to_csv("pedidos.csv", index=False)
+df.head()
+```
+
+3) Cargar modelo ligero y probar prompts:
+
+```python
+# Colab cell 3: cargar modelo text2text ligero (Flan-T5 small)
+from transformers import pipeline
+generator = pipeline("text2text-generation", model="google/flan-t5-small", device=0)  # device=0 si GPU disponible
+```
+
+4) Funciones de utilidad para construir prompts y consultar la "base de datos":
+
+```python
+# Colab cell 4: funciones para construir prompt y consultar pedido
+import pandas as pd
+df = pd.read_csv("pedidos.csv")
+
+system_prompt = (
+    "Eres un agente de servicio al cliente amable de EcoMarket. Responde con empatía y claridad."
+)
+
+def build_prompt_estado(tracking_number, order_row):
+    # Incluir contexto del pedido en el prompt para que el modelo use la "base de datos"
+    context = f"Registro: Tracking={order_row['tracking_number']}; Estado={order_row['estado']}; Fecha={order_row['fecha_entrega_estimada']}; Link={order_row['link_rastreo']}; Comentario={order_row['comentario']}"
+    user = (
+        f"{system_prompt}\n\nConsulta: Proporciona el estado actual del pedido con número de seguimiento {tracking_number}.\n"
+        f"{context}\n\nSi el pedido está retrasado, ofrece una disculpa breve y una explicación. Incluye la fecha estimada y el enlace de rastreo."
+    )
+    return user
+
+def consultar_estado_pedido(tracking_number):
+    pedido = df[df["tracking_number"] == str(tracking_number)]
+    if pedido.empty:
+        return f"No se encontró el pedido con número {tracking_number}."
+    row = pedido.iloc[0]
+    prompt = build_prompt_estado(tracking_number, row)
+    resp = generator(prompt, max_length=200)[0]["generated_text"]
+    return resp
+
+# Ejemplo
+print(consultar_estado_pedido("10003"))
+```
+
+5) Prompt de devolución (ejemplo con lógica simple):
+
+```python
+# Colab cell 5: prompt de devolución con regla simple de elegibilidad
+no_elegibles = ["Shampoo sólido", "Jabón artesanal", "Alimentos perecederos"]
+
+def build_prompt_devolucion(producto):
+    elegible = "NO" if producto in no_elegibles else "SÍ"
+    prompt = (
+        f"{system_prompt}\n\nUn cliente desea devolver el producto: '{producto}'.\n"
+        f"Elegible para devolución: {elegible}.\n"
+        "Si es elegible, explica pasos claros para iniciar la devolución (plazos, condiciones y pasos). "
+        "Si no es elegible, responde con empatía y ofrece alternativas (cambio, descuento, instrucciones)."
+    )
+    return prompt
+
+def procesar_devolucion(producto):
+    prompt = build_prompt_devolucion(producto)
+    resp = generator(prompt, max_length=250)[0]["generated_text"]
+    return resp
+
+# Ejemplo
+print(procesar_devolucion("Cepillo de bambú"))
+print(procesar_devolucion("Shampoo sólido"))
+```
+
+---
+
+### Alternativa: usar OpenAI API en Colab (si se quiere comparar)
+- Instalar `openai` y configurar clave en Colab (NO subir la clave al repo).
+
+```python
+# Colab cell: alternativa OpenAI
+!pip install -q openai pandas
+import os
+os.environ["OPENAI_API_KEY"] = "sk-..."  # cargar de forma segura usando widgets o Colab secrets
+from openai import OpenAI
+client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+# Llamada similar: client.chat.completions.create(...)
+```
+
+---
 
 
 
