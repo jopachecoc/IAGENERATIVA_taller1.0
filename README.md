@@ -448,7 +448,7 @@ print(procesar_devolucion("Shampoo sólido"))
 ---
 
 ### Alternativa: usar OpenAI API en Colab (si se quiere comparar)
-- Instalar `openai` y configurar clave en Colab (NO subir la clave al repo).
+- Instalar `openai` y configurar clave en Colab (Recomendado: NO subir la clave al repo).
 
 ```python
 # Colab cell: alternativa OpenAI
