@@ -1,3 +1,9 @@
+Presentado por:
+
+Julio Morales
+Jonathan Pacheco
+
+
 # Fase 1: Selección y Justificación del Modelo de IA
 
 ## Selección y Justificación del Modelo de IA
